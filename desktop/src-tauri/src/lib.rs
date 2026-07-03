@@ -1,4 +1,3 @@
-use tauri::Manager;
 
 mod commands;
 mod hardware;
@@ -16,12 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::new())
-        .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            #[cfg(debug_assertions)]
-            window.open_devtools();
-            Ok(())
-        })
+        .setup(|_app| Ok(()))
         .invoke_handler(tauri::generate_handler![
             commands::auth::login,
             commands::auth::register,
@@ -34,10 +28,15 @@ pub fn run() {
             commands::workspace::delete_file,
             commands::workspace::scan_workspace,
             commands::arduino::detect_arduino,
-            commands::arduino::compile,
-            commands::arduino::upload,
             commands::arduino::list_boards,
+            commands::arduino::list_ports,
+            commands::arduino::compile_sketch,
+            commands::arduino::upload_sketch,
             commands::arduino::serial_monitor,
+            commands::arduino::list_libraries,
+            commands::arduino::search_libraries,
+            commands::arduino::install_library,
+            commands::arduino::remove_library,
             commands::sync::push_changes,
             commands::sync::pull_changes,
             commands::sync::get_sync_status,

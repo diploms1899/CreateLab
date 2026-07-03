@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { useProjectStore } from "../stores/projectStore";
-import Sidebar from "./Sidebar";
 import Titlebar from "./Titlebar";
 import StatusBar from "./StatusBar";
 
@@ -35,10 +34,7 @@ export default function AppShell({ children }: Props) {
   return (
     <div className="app-shell" style={cssVars}>
       <Titlebar />
-      <div className="app-body">
-        <Sidebar />
-        <main className="app-content">{children}</main>
-      </div>
+      <div className="app-body">{children}</div>
       <StatusBar />
     </div>
   );

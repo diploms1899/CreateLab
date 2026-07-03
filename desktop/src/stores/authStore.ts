@@ -20,6 +20,8 @@ interface AuthState {
   setDeviceId: (id: string) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, email: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -37,6 +39,26 @@ export const useAuthStore = create<AuthState>()(
       setDeviceId: (id) => set({ deviceId: id }),
       logout: () => set({ accessToken: null, refreshToken: null, user: null }),
       isAuthenticated: () => !!get().accessToken && !!get().user,
+      login: async (username, password) => {
+        const { authApi } = await import("@/utils/api");
+        const res = await authApi.login(username, password);
+        set({
+          accessToken: res.data.access_token,
+          refreshToken: res.data.refresh_token,
+          user: res.data.user ?? { id: "", username, email: "", role: "student" },
+        });
+      },
+      register: async (username, password, email) => {
+        const { authApi } = await import("@/utils/api");
+        await authApi.register(username, email, password);
+        // Auto-login after register
+        const res = await authApi.login(username, password);
+        set({
+          accessToken: res.data.access_token,
+          refreshToken: res.data.refresh_token,
+          user: res.data.user ?? { id: "", username, email, role: "student" },
+        });
+      },
     }),
     {
       name: "createlab-auth",

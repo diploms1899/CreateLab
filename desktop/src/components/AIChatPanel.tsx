@@ -57,17 +57,32 @@ export default function AIChatPanel({ project }: AIChatPanelProps) {
     setInput("");
     setLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      const { getApi } = await import("@/utils/api");
+      const api = getApi();
+      const response = await api.post(`/ai/chat/${project.id}`, {
+        message: input.trim(),
+        include_files: [],
+      });
       const aiMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: simulateResponse(input.trim(), project),
+        content: response.data.content || response.data,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+    } catch {
+      // Fallback: show error message
+      const aiMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "⚠️ Could not reach the AI server. Make sure the CreateLab server is running and your API key is configured in Settings.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
       setLoading(false);
-    }, 800 + Math.random() * 600);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -78,7 +93,7 @@ export default function AIChatPanel({ project }: AIChatPanelProps) {
   };
 
   return (
-    <div className="w-96 min-w-96 border-l border-border bg-surface-alt flex flex-col">
+    <div className="h-full w-full border-l border-border bg-surface-alt flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
@@ -166,24 +181,4 @@ export default function AIChatPanel({ project }: AIChatPanelProps) {
   );
 }
 
-function simulateResponse(input: string, project: Project): string {
-  const lower = input.toLowerCase();
 
-  if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
-    return `Hey! Great to have you in the ${project.name} project. What would you like to work on today?`;
-  }
-
-  if (lower.includes("help") || lower.includes("start") || lower.includes("begin")) {
-    return `Let's get started with ${project.name}! I recommend we begin with the project structure:\n\n1. Set up the main loop and initialization\n2. Configure the display (128x64 OLED)\n3. Implement input handling\n4. Build the core game logic\n5. Add polish (sound, animations)\n\nWhich step sounds good to you?`;
-  }
-
-  if (lower.includes("error") || lower.includes("bug") || lower.includes("not working")) {
-    return "I can help debug that! Could you share the compiler error message or describe what's happening? I'll analyze the issue and suggest a fix.";
-  }
-
-  if (lower.includes("compile") || lower.includes("build") || lower.includes("upload")) {
-    return "To compile and upload:\n\n1. Connect your ESP32 via USB\n2. Select the right port in settings\n3. Click 'Compile' to check for errors\n4. Click 'Upload' to flash\n\nI can help fix any compilation issues that come up!";
-  }
-
-  return `Great question about ${project.name}! Here's what I recommend:\n\nLet me think about the best approach for this. Considering the ESP32 hardware (128x64 OLED, button inputs, MPU6050), we should implement this using clean, modular C++ code.\n\nWould you like me to:\n- Generate starter code for this feature?\n- Review your current implementation?\n- Explain the concept in more detail?`;
-}

@@ -1,194 +1,256 @@
-import { useState } from "react";
-import { Project } from "@/stores/projectStore";
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useProjectStore, Project } from "@/stores/projectStore";
 import {
-  FileCode,
-  FolderOpen,
-  BookOpen,
-  Settings,
-  Wifi,
-  WifiOff,
-  Cpu,
-  HardDrive,
+  FolderOpen, Cpu, Download, Upload, Play,
+  Search, Plus, Trash2, RefreshCw, Package, Zap,
+  ChevronRight, BookOpen, Settings, FileCode,
 } from "lucide-react";
 
-interface SidebarProps {
-  project: Project;
+type Tab = "files" | "boards" | "libraries";
+
+interface LibraryInfo {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
 }
 
-type Tab = "files" | "docs" | "boards" | "settings";
+interface SidebarProps {
+  project?: Project;
+  compact?: boolean;
+}
 
-export default function Sidebar({ project }: SidebarProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("files");
-  const [connected, setConnected] = useState(false);
+export default function Sidebar({ project, compact }: SidebarProps) {
+  const { currentProject } = useProjectStore();
+  const [activeTab, setActiveTab] = useState<Tab>(compact ? "boards" : "files");
+  const [boardSearch, setBoardSearch] = useState("");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [installedLibs, setInstalledLibs] = useState<LibraryInfo[]>([]);
+  const [searchResults, setSearchResults] = useState<LibraryInfo[]>([]);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [boards, setBoards] = useState<string[]>([]);
+  const [ports, setPorts] = useState<string[]>([]);
+  const [selectedBoard, setSelectedBoard] = useState("");
+  const [selectedPort, setSelectedPort] = useState("");
+  const [compiling, setCompiling] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: "files", label: "Files", icon: <FileCode size={16} /> },
-    { id: "docs", label: "Docs", icon: <BookOpen size={16} /> },
-    { id: "boards", label: "Boards", icon: <Cpu size={16} /> },
-    { id: "settings", label: "Settings", icon: <Settings size={16} /> },
-  ];
+  const refreshHardware = useCallback(async () => {
+    try {
+      const b = await invoke<string[]>("list_boards");
+      setBoards(b);
+      const p = await invoke<string[]>("list_ports");
+      setPorts(p);
+    } catch { /* arduino-cli may not be installed */ }
+  }, []);
+
+  useEffect(() => { refreshHardware(); }, [refreshHardware]);
+
+  const refreshLibraries = useCallback(async () => {
+    try {
+      const libs = await invoke<LibraryInfo[]>("list_libraries");
+      setInstalledLibs(libs);
+    } catch { /* arduino-cli may not be installed */ }
+  }, []);
+
+  useEffect(() => { refreshLibraries(); }, [refreshLibraries]);
+
+  const searchLibraries = async () => {
+    if (!librarySearch.trim()) return;
+    try {
+      const results = await invoke<LibraryInfo[]>("search_libraries", { query: librarySearch });
+      setSearchResults(results);
+    } catch { /* ignore */ }
+  };
+
+  const installLibrary = async (name: string) => {
+    setInstalling(name);
+    try {
+      await invoke("install_library", { name });
+      await refreshLibraries();
+      setInstalling(null);
+    } catch { setInstalling(null); }
+  };
+
+  const removeLibrary = async (name: string) => {
+    try {
+      await invoke("remove_library", { name });
+      await refreshLibraries();
+    } catch { /* ignore */ }
+  };
+
+  const handleCompile = async () => {
+    setCompiling(true);
+    try { await invoke("compile_sketch", { board: selectedBoard }); } catch { /**/ }
+    setCompiling(false);
+  };
+
+  const handleUpload = async () => {
+    setUploading(true);
+    try { await invoke("upload_sketch", { board: selectedBoard, port: selectedPort }); } catch { /**/ }
+    setUploading(false);
+  };
+
+  const p = project || currentProject;
 
   return (
     <aside className="sidebar">
-      {/* Project info */}
+      {/* Project info — skip in compact mode */}
+      {!compact && (
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 mb-1">
           <FolderOpen size={16} className="text-accent" />
-          <span className="text-sm font-medium text-text-primary truncate">
-            {project.name}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              connected ? "bg-green-400" : "bg-text-muted"
-            }`}
-          />
-          <span className="text-xs text-text-muted">
-            {connected ? "Server connected" : "Offline mode"}
-          </span>
-          {!connected && (
-            <WifiOff size={12} className="text-text-muted" />
-          )}
+          <span className="text-sm font-medium text-text-primary truncate">{p?.name ?? "CreateLab"}</span>
         </div>
       </div>
+      )}
 
-      {/* Tab navigation */}
-      <div className="flex border-b border-border">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-colors ${
-              activeTab === tab.id
-                ? "text-accent border-b-2 border-accent"
-                : "text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
+      {/* Tab bar */}
+      <div className={`flex border-b border-border ${compact ? "pt-2" : ""}`}>
+        {([
+          ...(compact ? [] : [["files", FileCode, "Files"] as const]),
+          ["boards", Cpu, "Boards"],
+          ["libraries", Package, "Libraries"],
+        ] as readonly (readonly [Tab, any, string])[]).map(([id, Icon, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs transition-colors border-b-2 ${
+              activeTab === id ? "border-accent text-accent bg-accent/5" : "border-transparent text-text-muted hover:text-text-primary"
+            }`}>
+            <Icon size={13} /> {label}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-auto p-3">
+        {/* ---- FILES ---- */}
         {activeTab === "files" && (
-          <div className="space-y-1">
-            <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-3 px-1">
-              Project Files
-            </p>
-            <FileItem name="main.ino" type="ino" />
-            <FileItem name="config.h" type="h" />
-            <FileItem name="display.h" type="h" />
-            <FileItem name="display.cpp" type="cpp" />
-            <FileItem name="game.cpp" type="cpp" />
-            <FileItem name="game.h" type="h" />
-            <FileItem name="README.md" type="md" />
-            <div className="mt-4">
-              <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-3 px-1">
-                Libraries
-              </p>
-              <FileItem name="U8g2" type="lib" />
-              <FileItem name="Adafruit_SSD1306" type="lib" />
-              <FileItem name="Adafruit_GFX" type="lib" />
-            </div>
+          <div className="space-y-0.5">
+            <p className="text-xs text-text-muted uppercase tracking-wider mb-2 px-1">Project Files</p>
+            {p ? (
+              <>
+                {["src/", "include/", "lib/", "assets/", "platformio.ini", "main.cpp", "config.h"].map(f => (
+                  <div key={f} className={`flex items-center gap-2 px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                    f.endsWith("/") ? "text-text-secondary font-medium" : "text-text-muted"
+                  } hover:bg-surface-hover`}>
+                    {f.endsWith("/") ? <><ChevronRight size={12} /><FolderOpen size={13} /></> : <span className="w-5" />}
+                    {f}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p className="text-xs text-text-muted p-2">No project open</p>
+            )}
           </div>
         )}
 
-        {activeTab === "docs" && (
-          <div className="space-y-1">
-            <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-3 px-1">
-              Documentation
-            </p>
-            <DocItem name="Getting Started" />
-            <DocItem name="Hardware Guide" />
-            <DocItem name="API Reference" />
-            <DocItem name="Troubleshooting" />
-            <DocItem name={`${project.name} Guide`} />
-          </div>
-        )}
-
+        {/* ---- BOARDS ---- */}
         {activeTab === "boards" && (
           <div className="space-y-3">
-            <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-3 px-1">
-              Connected Devices
-            </p>
-            <div className="bg-surface-hover/50 rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1">
-                <Cpu size={14} className="text-accent" />
-                <span className="text-sm text-text-primary">ESP32 DevKit</span>
-              </div>
-              <p className="text-xs text-text-muted">Port: /dev/ttyUSB0</p>
-              <div className="flex gap-2 mt-2">
-                <button className="text-xs bg-accent text-white px-3 py-1 rounded hover:bg-accent-hover transition-colors">
-                  Compile
-                </button>
-                <button className="text-xs bg-surface-hover text-text-secondary px-3 py-1 rounded border border-border hover:text-text-primary transition-colors">
-                  Upload
+            <div>
+              <label className="text-xs text-text-muted uppercase tracking-wider">Port</label>
+              <div className="flex items-center gap-2 mt-1">
+                <select value={selectedPort} onChange={e => setSelectedPort(e.target.value)}
+                  className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent">
+                  <option value="">Select port...</option>
+                  {ports.map(x => <option key={x} value={x}>{x}</option>)}
+                </select>
+                <button onClick={refreshHardware} className="p-1 rounded hover:bg-surface-hover text-text-muted">
+                  <RefreshCw size={14} />
                 </button>
               </div>
             </div>
 
-            <div className="bg-surface-hover/50 rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1">
-                <HardDrive size={14} className="text-text-muted" />
-                <span className="text-sm text-text-secondary">No device</span>
+            <div>
+              <label className="text-xs text-text-muted uppercase tracking-wider">Board</label>
+              <input type="text" placeholder="Search boards..." value={boardSearch} onChange={e => setBoardSearch(e.target.value)}
+                className="w-full bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary placeholder-text-muted mt-1 focus:outline-none focus:border-accent" />
+              <div className="mt-1 space-y-0.5 max-h-28 overflow-auto">
+                {boards.filter(b => b.toLowerCase().includes(boardSearch.toLowerCase())).map(b => (
+                  <button key={b} onClick={() => setSelectedBoard(b)}
+                    className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${
+                      selectedBoard === b ? "bg-accent/20 text-accent" : "text-text-muted hover:bg-surface-hover"
+                    }`}>{b}</button>
+                ))}
               </div>
-              <p className="text-xs text-text-muted">Click to scan ports</p>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border">
+              <button onClick={handleCompile} disabled={compiling || !selectedBoard}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded text-sm font-medium bg-accent text-white hover:opacity-90 disabled:opacity-40 transition-all">
+                {compiling ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} />}
+                {compiling ? "Compiling..." : "Compile"}
+              </button>
+              <button onClick={handleUpload} disabled={uploading || !selectedBoard || !selectedPort}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded text-sm font-medium bg-green-600 text-white hover:opacity-90 disabled:opacity-40 transition-all">
+                {uploading ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />}
+                {uploading ? "Uploading..." : "Upload"}
+              </button>
             </div>
           </div>
         )}
 
-        {activeTab === "settings" && (
-          <div className="space-y-3">
-            <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-3 px-1">
-              Project Settings
-            </p>
-            <SettingRow label="Board" value="ESP32 Dev Module" />
-            <SettingRow label="Flash Size" value="4MB" />
-            <SettingRow label="Partition" value="Default" />
-            <SettingRow label="CPU Freq" value="240MHz" />
-            <SettingRow label="Upload Speed" value="921600" />
-            <SettingRow label="Debug Level" value="None" />
+        {/* ---- LIBRARIES ---- */}
+        {activeTab === "libraries" && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-text-muted uppercase tracking-wider">Install Library</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="text" placeholder="Search libraries..." value={librarySearch}
+                  onChange={e => setLibrarySearch(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && searchLibraries()}
+                  className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-accent" />
+                <button onClick={searchLibraries} className="p-1.5 rounded hover:bg-surface-hover text-text-muted hover:text-accent">
+                  <Search size={14} />
+                </button>
+              </div>
+              {searchResults.length > 0 && (
+                <div className="mt-2 space-y-0.5 max-h-48 overflow-auto">
+                  {searchResults.map(lib => (
+                    <div key={lib.name} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-hover">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-text-primary truncate">{lib.name}</div>
+                        <div className="text-[10px] text-text-muted truncate">{lib.description}</div>
+                      </div>
+                      <button onClick={() => installLibrary(lib.name)}
+                        disabled={installing === lib.name || installedLibs.some(l => l.name === lib.name)}
+                        className="ml-2 px-2 py-1 rounded text-[10px] font-medium bg-accent text-white hover:opacity-90 disabled:opacity-40 shrink-0">
+                        {installing === lib.name ? "..." : installedLibs.some(l => l.name === lib.name) ? "Installed" : "Install"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-text-muted uppercase tracking-wider">Installed ({installedLibs.length})</span>
+                <button onClick={refreshLibraries} className="p-1 rounded hover:bg-surface-hover text-text-muted"><RefreshCw size={12} /></button>
+              </div>
+              {installedLibs.length === 0 ? (
+                <p className="text-xs text-text-muted p-2">No libraries installed</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {installedLibs.map(lib => (
+                    <div key={lib.name} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-hover group">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-text-primary">{lib.name}</div>
+                        <div className="text-[10px] text-text-muted">v{lib.version} — {lib.author}</div>
+                      </div>
+                      <button onClick={() => removeLibrary(lib.name)}
+                        className="p-1 rounded hover:bg-red-600/20 text-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
     </aside>
-  );
-}
-
-function FileItem({ name, type }: { name: string; type: string }) {
-  const colors: Record<string, string> = {
-    ino: "text-blue-400",
-    h: "text-orange-400",
-    cpp: "text-purple-400",
-    md: "text-text-muted",
-    lib: "text-yellow-400",
-  };
-
-  return (
-    <button className="w-full flex items-center gap-2 px-3 py-1.5 rounded text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors text-left">
-      <FileCode size={14} className={colors[type] || "text-text-muted"} />
-      <span className="truncate">{name}</span>
-    </button>
-  );
-}
-
-function DocItem({ name }: { name: string }) {
-  return (
-    <button className="w-full flex items-center gap-2 px-3 py-1.5 rounded text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors text-left">
-      <BookOpen size={14} className="text-text-muted" />
-      <span className="truncate">{name}</span>
-    </button>
-  );
-}
-
-function SettingRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between px-3 py-2 rounded bg-surface-hover/30">
-      <span className="text-xs text-text-muted">{label}</span>
-      <span className="text-xs text-text-secondary">{value}</span>
-    </div>
   );
 }

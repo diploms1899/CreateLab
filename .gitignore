@@ -1,0 +1,60 @@
+# ============================================================
+# CreateLab — Generated / Build Artifacts
+# ============================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Rust / Tauri
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+
+# Node
+desktop/node_modules/
+desktop/dist/
+desktop/.vite/
+
+# Python
+server/.venv/
+server/__pycache__/
+server/app/__pycache__/
+server/**/__pycache__/
+*.pyc
+*.pyo
+
+# Database & Runtime Data
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Build outputs
+dist/
+build/
+out/
+
+# Test artifacts
+*.test-output
+coverage/

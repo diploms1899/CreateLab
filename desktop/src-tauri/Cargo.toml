@@ -12,7 +12,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
@@ -29,6 +29,7 @@ dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 hostname = "0.4"
+tracing = "0.1"
 
 [features]
 default = ["custom-protocol"]

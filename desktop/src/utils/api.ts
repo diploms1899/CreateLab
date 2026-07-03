@@ -8,7 +8,7 @@ export function getApi(): AxiosInstance {
 
   const store = useAuthStore.getState();
   apiInstance = axios.create({
-    baseURL: store.serverUrl,
+    baseURL: store.serverUrl + "/api/v1",
     timeout: 30000,
     headers: {
       "Content-Type": "application/json",
@@ -17,7 +17,7 @@ export function getApi(): AxiosInstance {
 
   apiInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     const token = useAuthStore.getState().accessToken;
-    if (token) {
+    if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -39,7 +39,7 @@ export function getApi(): AxiosInstance {
             const { access_token, refresh_token } = response.data;
             useAuthStore.getState().setTokens(access_token, refresh_token);
             originalRequest.headers.Authorization = `Bearer ${access_token}`;
-            return apiInstance(originalRequest);
+            return apiInstance!(originalRequest);
           } catch {
             useAuthStore.getState().logout();
           }
