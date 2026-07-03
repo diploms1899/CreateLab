@@ -42,6 +42,8 @@ pub fn run() {
             commands::sync::get_sync_status,
             commands::device::get_device_id,
             commands::device::register_device,
+            commands::repo::scan_repo_health,
+            commands::repo::run_shell_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CreateLab");

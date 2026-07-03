@@ -6,6 +6,7 @@ import LoginView from "@/views/LoginView";
 import ProjectSelectView from "@/views/ProjectSelectView";
 import WorkspaceView from "@/views/WorkspaceView";
 import SettingsView from "@/views/SettingsView";
+import RepoHealthPanel from "@/components/RepoHealthPanel";
 import Titlebar from "@/components/Titlebar";
 
 export default function App() {
@@ -58,6 +59,12 @@ export default function App() {
             path="/settings"
             element={
               isAuthenticated() ? <SettingsView /> : <Navigate to="/login" replace />
+            }
+          />
+          <Route
+            path="/repo-health"
+            element={
+              isAuthenticated() ? <RepoHealthPanel /> : <Navigate to="/login" replace />
             }
           />
         </Routes>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Save, Wifi, CheckCircle, XCircle,
-  Cpu, Palette, Settings2, Code, FolderOpen, Monitor
+  Cpu, Palette, Settings2, Code, FolderOpen, Monitor, HardDrive
 } from "lucide-react";
 
 type SettingsTab = "ai" | "editor" | "hardware" | "theme" | "workspace";
@@ -85,6 +85,10 @@ export default function SettingsView() {
         </button>
         <h1 className="text-lg font-semibold text-text-primary">Settings</h1>
         <div className="flex-1" />
+        <button onClick={() => navigate("/repo-health")}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs text-text-muted hover:text-accent hover:bg-surface-hover rounded transition-colors border border-border mr-2">
+          <HardDrive size={14} /> Repo Health
+        </button>
         <button onClick={handleSaveAll}
           className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-all ${saved ? "bg-green-600 text-white" : "bg-accent text-white hover:opacity-90"}`}>
           {saved ? <><CheckCircle size={16} /> Saved</> : <><Save size={16} /> Save All</>}
