@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
 import {
   Trash2, HardDrive, GitBranch, CheckCircle, AlertTriangle,
   RotateCcw, Database, FolderOpen, Terminal, RefreshCw, XCircle
@@ -35,7 +39,7 @@ export default function RepoHealthPanel() {
   const runCmd = async (label: string, cmd: string[]) => {
     setCleaning(label);
     try {
-      await invoke("run_shell_cmd", { cmd });
+      await safeInvoke("run_shell_cmd", { cmd });
       setMsg(`${label} complete`);
     } catch (e) { setMsg(`Failed: ${e}`); }
     setCleaning(null);

@@ -16,14 +16,21 @@ class Workspace(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     project_id = Column(String, ForeignKey("user_projects.id", ondelete="CASCADE"), nullable=True)
     template_id = Column(String, ForeignKey("project_templates.id", ondelete="SET NULL"), nullable=True)
-    path = Column(String(512), nullable=False)
-    file_index = Column(JSON, nullable=True)  # JSON blob: {relative_path: metadata}
+    name = Column(String(256), nullable=False, default="")
+    path = Column(String(512), nullable=False, default="")
+    file_index = Column(JSON, nullable=True)
+    sync_version = Column(Integer, default=0)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     file_count = Column(Integer, default=0)
     total_size_bytes = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def last_synced(self):
+        """Alias for last_synced_at used by routes."""
+        return self.last_synced_at
 
     # Relationships
     user = relationship("User", back_populates="workspaces")

@@ -5,14 +5,24 @@ import { useAuthStore } from "@/stores/authStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { Terminal, LogOut, ChevronLeft, Settings } from "lucide-react";
 
+function useAppWindow() {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
+
 export default function Titlebar() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuthStore();
   const { currentProject, setCurrentProject } = useProjectStore();
-  const appWindow = getCurrentWindow();
+  const appWindow = useAppWindow();
+  const isTauri = appWindow !== null;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const handleMaximize = useCallback(async () => {
+    if (!appWindow) return;
     const next = !isFullscreen;
     await appWindow.setFullscreen(next);
     setIsFullscreen(next);
@@ -20,11 +30,13 @@ export default function Titlebar() {
 
   return (
     <header className="titlebar" data-tauri-drag-region>
-      <div className="traffic-lights" data-tauri-drag-region="false">
-        <button onClick={() => appWindow.close()} className="traffic-light traffic-light-close" aria-label="Close" />
-        <button onClick={() => appWindow.minimize()} className="traffic-light traffic-light-minimize" aria-label="Minimize" />
-        <button onClick={handleMaximize} className="traffic-light traffic-light-maximize" aria-label={isFullscreen ? "Restore" : "Fullscreen"} />
-      </div>
+      {isTauri && (
+        <div className="traffic-lights" data-tauri-drag-region="false">
+          <button onClick={() => appWindow!.close()} className="traffic-light traffic-light-close" aria-label="Close" />
+          <button onClick={() => appWindow!.minimize()} className="traffic-light traffic-light-minimize" aria-label="Minimize" />
+          <button onClick={handleMaximize} className="traffic-light traffic-light-maximize" aria-label={isFullscreen ? "Restore" : "Fullscreen"} />
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <Terminal size={18} className="text-accent" />

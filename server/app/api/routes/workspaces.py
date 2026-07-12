@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -115,16 +114,21 @@ async def write_file(
     file_path: str,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    content: str = "",
+    body: dict = {},
 ):
+    # Reject path traversal
+    if ".." in file_path or file_path.startswith("/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path.")
+
     result = await db.execute(
         select(Workspace).where(Workspace.id == workspace_id, Workspace.user_id == user.id)
     )
     workspace = result.scalar_one_or_none()
     if not workspace:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
-    current = json.loads(workspace.file_index) if workspace.file_index else {}
+    content = body.get("content", "")
+    current = dict(workspace.file_index) if workspace.file_index else {}
     current[file_path] = content
-    workspace.file_index = json.dumps(current)
+    workspace.file_index = current
     workspace.sync_version += 1
     return {"path": file_path, "status": "saved"}

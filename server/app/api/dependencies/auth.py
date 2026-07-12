@@ -51,7 +51,8 @@ async def get_current_user(
 def require_role(role: str):
     """Dependency factory: require a specific user role."""
     async def _role_checker(current_user: User = Depends(get_current_user)):
-        if current_user.role.value != role and current_user.role.value != "administrator":
+        current_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        if current_role != role and current_role != "administrator":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{role}' required",

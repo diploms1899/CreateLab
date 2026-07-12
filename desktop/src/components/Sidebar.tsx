@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
 import { useProjectStore, Project } from "@/stores/projectStore";
 import {
   FolderOpen, Cpu, Download, Upload, Play,
@@ -38,9 +42,9 @@ export default function Sidebar({ project, compact }: SidebarProps) {
 
   const refreshHardware = useCallback(async () => {
     try {
-      const b = await invoke<string[]>("list_boards");
+      const b = await safeInvoke<string[]>("list_boards");
       setBoards(b);
-      const p = await invoke<string[]>("list_ports");
+      const p = await safeInvoke<string[]>("list_ports");
       setPorts(p);
     } catch { /* arduino-cli may not be installed */ }
   }, []);
@@ -49,7 +53,7 @@ export default function Sidebar({ project, compact }: SidebarProps) {
 
   const refreshLibraries = useCallback(async () => {
     try {
-      const libs = await invoke<LibraryInfo[]>("list_libraries");
+      const libs = await safeInvoke<LibraryInfo[]>("list_libraries");
       setInstalledLibs(libs);
     } catch { /* arduino-cli may not be installed */ }
   }, []);
@@ -59,7 +63,7 @@ export default function Sidebar({ project, compact }: SidebarProps) {
   const searchLibraries = async () => {
     if (!librarySearch.trim()) return;
     try {
-      const results = await invoke<LibraryInfo[]>("search_libraries", { query: librarySearch });
+      const results = await safeInvoke<LibraryInfo[]>("search_libraries", { query: librarySearch });
       setSearchResults(results);
     } catch { /* ignore */ }
   };
@@ -67,7 +71,7 @@ export default function Sidebar({ project, compact }: SidebarProps) {
   const installLibrary = async (name: string) => {
     setInstalling(name);
     try {
-      await invoke("install_library", { name });
+      await safeInvoke("install_library", { name });
       await refreshLibraries();
       setInstalling(null);
     } catch { setInstalling(null); }
@@ -75,20 +79,20 @@ export default function Sidebar({ project, compact }: SidebarProps) {
 
   const removeLibrary = async (name: string) => {
     try {
-      await invoke("remove_library", { name });
+      await safeInvoke("remove_library", { name });
       await refreshLibraries();
     } catch { /* ignore */ }
   };
 
   const handleCompile = async () => {
     setCompiling(true);
-    try { await invoke("compile_sketch", { board: selectedBoard }); } catch { /**/ }
+    try { await safeInvoke("compile_sketch", { board: selectedBoard }); } catch { /**/ }
     setCompiling(false);
   };
 
   const handleUpload = async () => {
     setUploading(true);
-    try { await invoke("upload_sketch", { board: selectedBoard, port: selectedPort }); } catch { /**/ }
+    try { await safeInvoke("upload_sketch", { board: selectedBoard, port: selectedPort }); } catch { /**/ }
     setUploading(false);
   };
 

@@ -1,11 +1,13 @@
 """Pydantic schemas for projects and templates."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
 
 class ProjectTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     slug: str
     name: str
@@ -15,11 +17,10 @@ class ProjectTemplateResponse(BaseModel):
     learning_objectives: Optional[list] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
-
 
 class UserProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     user_id: str
     template_id: Optional[str] = None
@@ -30,9 +31,6 @@ class UserProjectResponse(BaseModel):
     is_active: bool
     progress: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class CreateProjectRequest(BaseModel):

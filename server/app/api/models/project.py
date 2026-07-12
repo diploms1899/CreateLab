@@ -23,7 +23,9 @@ class ProjectTemplate(Base):
     learning_objectives = Column(JSON, nullable=True)
     firmware_rules = Column(Text, nullable=True)
     starter_code_path = Column(String(256), nullable=True)
+    starter_files = Column(JSON, nullable=True)
     documentation_path = Column(String(256), nullable=True)
+    sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),

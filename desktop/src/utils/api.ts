@@ -4,9 +4,14 @@ import { useAuthStore } from "@/stores/authStore";
 let apiInstance: AxiosInstance | null = null;
 
 export function getApi(): AxiosInstance {
-  if (apiInstance) return apiInstance;
-
   const store = useAuthStore.getState();
+
+  // Recreate the instance if the server URL changed
+  if (apiInstance && apiInstance.defaults.baseURL !== store.serverUrl + "/api/v1") {
+    apiInstance = null;
+  }
+
+  if (apiInstance) return apiInstance;
   apiInstance = axios.create({
     baseURL: store.serverUrl + "/api/v1",
     timeout: 30000,
@@ -33,7 +38,7 @@ export function getApi(): AxiosInstance {
         if (refreshToken) {
           try {
             const response = await axios.post(
-              `${useAuthStore.getState().serverUrl}/auth/refresh`,
+              `${useAuthStore.getState().serverUrl}/api/v1/auth/refresh`,
               { refresh_token: refreshToken }
             );
             const { access_token, refresh_token } = response.data;

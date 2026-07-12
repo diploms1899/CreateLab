@@ -29,6 +29,13 @@ from app.api.dependencies.auth import get_current_user
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
+def get_role(user: User) -> str:
+    """Safely extract role string from user, handling both enum and string types."""
+    if hasattr(user.role, "value"):
+        return user.role.value
+    return str(user.role)
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Register a new user account."""
@@ -52,7 +59,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.flush()
 
-    access = create_access_token(subject=user.id, extra_claims={"role": user.role.value})
+    access = create_access_token(subject=user.id, extra_claims={"role": get_role(user)})
     refresh = create_refresh_token(subject=user.id)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
@@ -77,7 +84,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         )
 
     user.last_login = datetime.now(timezone.utc)
-    access = create_access_token(subject=user.id, extra_claims={"role": user.role.value})
+    access = create_access_token(subject=user.id, extra_claims={"role": get_role(user)})
     refresh = create_refresh_token(subject=user.id)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
@@ -100,7 +107,7 @@ async def refresh(request: RefreshRequest, db: AsyncSession = Depends(get_db)):
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access = create_access_token(subject=user.id, extra_claims={"role": user.role.value})
+    access = create_access_token(subject=user.id, extra_claims={"role": get_role(user)})
     refresh = create_refresh_token(subject=user.id)
     return TokenResponse(access_token=access, refresh_token=refresh)
 

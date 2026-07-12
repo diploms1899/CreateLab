@@ -15,7 +15,7 @@ export default function BoardSelector({ value, onChange }: Props) {
     <select value={value} onChange={(e) => onChange(e.target.value)} className="board-selector">
       <option value="">Select board...</option>
       {boards.map((b) => (
-        <option key={b.fqbn} value={b.fqbn}>{b.name}{b.port ? ` (${b.port})` : ""}</option>
+        <option key={b} value={b}>{b}</option>
       ))}
     </select>
   );

@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useProjectStore, Project } from "@/stores/projectStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import FileExplorer from "@/components/FileExplorer";
 import EditorPanel from "@/components/EditorPanel";
 import AIChatPanel from "@/components/AIChatPanel";
@@ -27,6 +28,7 @@ const DEFAULT_FILES: WorkspaceFile[] = [
 
 export default function WorkspaceView() {
   const { currentProject } = useProjectStore();
+  const { activeId, files: wsFiles, readFile, writeFile, listWorkspaces } = useWorkspaceStore();
   const [showHardware, setShowHardware] = useState(true);
   const [showAI, setShowAI] = useState(true);
   const [files, setFiles] = useState<WorkspaceFile[]>(DEFAULT_FILES);
@@ -36,6 +38,24 @@ export default function WorkspaceView() {
     return map;
   });
   const [activeFilePath, setActiveFilePath] = useState<string>("main.cpp");
+
+  // Load workspace files from store when available
+  useEffect(() => {
+    if (activeId && wsFiles.length > 0) {
+      setFiles(wsFiles);
+      const map: Record<string, string> = {};
+      for (const f of wsFiles) map[f.path] = f.content;
+      setFileContents(map);
+      if (!activeFilePath || !wsFiles.find(f => f.path === activeFilePath)) {
+        setActiveFilePath(wsFiles[0].path);
+      }
+    }
+  }, [activeId, wsFiles]);
+
+  // Load workspaces on mount
+  useEffect(() => {
+    listWorkspaces().catch(() => {});
+  }, []);
 
   const activeFile = files.find(f => f.path === activeFilePath) || null;
 
@@ -50,7 +70,11 @@ export default function WorkspaceView() {
   const handleEditorSave = useCallback((path: string, content: string) => {
     setFileContents(prev => ({ ...prev, [path]: content }));
     setFiles(prev => prev.map(f => f.path === path ? { ...f, content } : f));
-  }, []);
+    // Persist to workspace store if connected
+    if (activeId) {
+      writeFile(activeId, path, content).catch(() => {});
+    }
+  }, [activeId, writeFile]);
 
   const handleFileClose = useCallback((path: string) => {
     setFiles(prev => prev.filter(f => f.path !== path));
@@ -151,7 +175,15 @@ export default function WorkspaceView() {
             <>
               <PanelResizeHandle className="w-1 bg-border hover:bg-accent transition-colors cursor-col-resize" />
               <Panel defaultSize={26} minSize={14} maxSize={42}>
-                <AIChatPanel project={projectForChat} />
+                <AIChatPanel
+                  project={projectForChat}
+                  workspaceId={activeId || "default"}
+                  files={fileContents}
+                  onApplyPatch={(filePath, content) => {
+                    handleEditorSave(filePath, content);
+                    setActiveFilePath(filePath);
+                  }}
+                />
               </Panel>
             </>
           )}

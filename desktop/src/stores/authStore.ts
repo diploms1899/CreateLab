@@ -30,7 +30,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       user: null,
-      serverUrl: "http://localhost:8443",
+      serverUrl: "http://localhost:8000",
       deviceId: "",
 
       setTokens: (access, refresh) => set({ accessToken: access, refreshToken: refresh }),
@@ -62,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "createlab-auth",
+      version: 2,
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,

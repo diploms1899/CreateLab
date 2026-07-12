@@ -1,9 +1,10 @@
 import { useSyncStore } from "../stores/syncStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Cloud, CloudOff, RefreshCw, Check } from "lucide-react";
 
 export default function SyncIndicator() {
   const { status, syncNow } = useSyncStore((s) => s);
-  const activeId = ""; // from workspace store
+  const activeId = useWorkspaceStore((s) => s.activeId);
 
   const icon = {
     idle: <Cloud size={16} />,

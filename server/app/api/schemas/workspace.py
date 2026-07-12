@@ -1,6 +1,6 @@
 """Pydantic schemas for workspace sync."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -26,6 +26,8 @@ class SyncResponse(BaseModel):
 
 
 class WorkspaceStateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     project_id: Optional[str] = None
     path: str
@@ -33,6 +35,3 @@ class WorkspaceStateResponse(BaseModel):
     total_size_bytes: int
     last_synced_at: Optional[datetime] = None
     files: list[FileEntry] = []
-
-    class Config:
-        from_attributes = True

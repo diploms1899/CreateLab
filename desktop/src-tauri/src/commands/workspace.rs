@@ -78,7 +78,7 @@ pub async fn write_file(state: State<'_, AppState>, workspace_id: String, path: 
     client
         .put(format!("{}/api/v1/workspaces/{}/files/{}", server_url, workspace_id, path))
         .bearer_auth(&token)
-        .query(&[("content", &content)])
+        .json(&serde_json::json!({"content": content}))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;

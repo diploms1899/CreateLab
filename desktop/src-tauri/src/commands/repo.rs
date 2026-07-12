@@ -89,10 +89,17 @@ pub async fn scan_repo_health() -> Result<HealthReport, String> {
     })
 }
 
+/// Allowed commands for run_shell_cmd. Add only safe, read-only commands.
+const ALLOWED_COMMANDS: &[&str] = &["git", "cargo", "arduino-cli", "node", "npm", "python"];
+
 #[tauri::command]
 pub async fn run_shell_cmd(cmd: Vec<String>) -> Result<String, String> {
     if cmd.is_empty() { return Err("No command".into()); }
-    let output = Command::new(&cmd[0])
+    let prog = &cmd[0];
+    if !ALLOWED_COMMANDS.contains(&prog.as_str()) {
+        return Err(format!("Command '{}' is not allowed", prog));
+    }
+    let output = Command::new(prog)
         .args(&cmd[1..])
         .output()
         .map_err(|e| format!("Command failed: {}", e))?;

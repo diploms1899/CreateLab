@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
 
 export interface WorkspaceFile {
   path: string;
@@ -29,12 +33,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   loading: false,
 
   listWorkspaces: async () => {
-    const ws = await invoke<any[]>("list_workspaces");
-    set({ workspaces: ws.map(w => ({ id: w.id, name: w.name, template_id: w.template_id, sync_version: w.sync_version })) });
+    try {
+      const ws = await safeInvoke<any[]>("list_workspaces");
+      set({ workspaces: ws.map(w => ({ id: w.id, name: w.name, template_id: w.template_id, sync_version: w.sync_version })) });
+    } catch {
+      // Works in browser mode — silently ignore
+    }
   },
 
   createWorkspace: async (templateSlug, name) => {
-    const ws: any = await invoke("create_workspace", { templateSlug, name });
+    const ws: any = await safeInvoke("create_workspace", { templateSlug, name });
     const id = ws.id;
     set({ activeId: id });
     await get().listWorkspaces();
@@ -42,11 +50,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   readFile: async (workspaceId, path) => {
-    return await invoke<string>("read_file", { workspaceId, path });
+    return await safeInvoke<string>("read_file", { workspaceId, path });
   },
 
   writeFile: async (workspaceId, path, content) => {
-    await invoke("write_file", { workspaceId, path, content });
+    await safeInvoke("write_file", { workspaceId, path, content });
     const { files } = get();
     const existing = files.find(f => f.path === path);
     if (existing) {

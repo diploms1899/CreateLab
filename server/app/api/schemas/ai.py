@@ -9,6 +9,7 @@ class AIRequest(BaseModel):
     message: str = Field(..., min_length=1)
     build_output: str | None = None
     include_files: list[str] = Field(default_factory=list)
+    files: dict[str, str] = Field(default_factory=dict)  # path -> content
 
 
 class AIResponse(BaseModel):

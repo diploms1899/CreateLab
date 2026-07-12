@@ -1,6 +1,6 @@
 """Pydantic schemas for authentication."""
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional
 
 
@@ -28,15 +28,14 @@ class RefreshRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     username: str
     email: str
     display_name: Optional[str] = None
     role: str
     is_active: bool
-
-    class Config:
-        from_attributes = True
 
 
 class DeviceRegistrationRequest(BaseModel):

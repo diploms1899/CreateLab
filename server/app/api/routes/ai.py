@@ -22,6 +22,16 @@ from app.api.services.ai_service import AIService
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 
+def _format_files(files: dict[str, str]) -> str:
+    """Format file contents for the system prompt."""
+    lines = []
+    for path, content in files.items():
+        lines.append(f"--- {path} ---")
+        lines.append(content)
+        lines.append("")
+    return "\n".join(lines) if lines else "{}"
+
+
 @router.post("/chat/{workspace_id}", response_model=AIResponse)
 async def chat(
     workspace_id: str,
@@ -33,13 +43,16 @@ async def chat(
         select(Workspace).where(Workspace.id == workspace_id, Workspace.user_id == user.id)
     )
     workspace = result.scalar_one_or_none()
-    if not workspace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
 
-    tmpl_result = await db.execute(
-        select(ProjectTemplate).where(ProjectTemplate.id == workspace.template_id)
-    )
-    template = tmpl_result.scalar_one_or_none()
+    if workspace:
+        tmpl_result = await db.execute(
+            select(ProjectTemplate).where(ProjectTemplate.id == workspace.template_id)
+        )
+        template = tmpl_result.scalar_one_or_none()
+    else:
+        # Fallback: use first available template for context
+        tmpl_result = await db.execute(select(ProjectTemplate).limit(1))
+        template = tmpl_result.scalar_one_or_none()
 
     hist_result = await db.execute(
         select(Conversation)
@@ -59,7 +72,7 @@ async def chat(
         ai_personality=template.ai_personality if template else "",
         hardware_config=hw_config,
         coding_standards=template.coding_standards if template else "",
-        workspace_files=workspace.file_index if workspace.file_index else "{}",
+        workspace_files=_format_files(req.files) if req.files else str(workspace.file_index) if workspace and workspace.file_index else "{}",
         build_output=req.build_output or "",
     )
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Save, Wifi, CheckCircle, XCircle,
+  ArrowLeft, Save, Wifi, CheckCircle, XCircle, Loader2,
   Cpu, Palette, Settings2, Code, FolderOpen, Monitor, HardDrive
 } from "lucide-react";
 
@@ -76,7 +76,7 @@ export default function SettingsView() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface-dark">
+    <div className="h-full flex flex-col bg-surface">
       {/* Header */}
       <div className="flex items-center gap-4 px-6 py-3 border-b border-border bg-surface">
         <button onClick={() => navigate(-1)}
@@ -113,23 +113,96 @@ export default function SettingsView() {
             {/* ═══ AI ═══ */}
             {activeTab === "ai" && (<>
               <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">AI Configuration</h2>
+
+              {/* API Settings */}
               <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider">Connection</h3>
                 <div><label className="block text-xs text-text-muted mb-1">DeepSeek API Key</label>
-                  <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" placeholder="sk-..." /></div>
+                  <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono" placeholder="sk-..." /></div>
                 <div><label className="block text-xs text-text-muted mb-1">Base URL</label>
-                  <input type="text" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
-                <div><label className="block text-xs text-text-muted mb-1">Model</label>
-                  <input type="text" value={model} onChange={e => setModel(e.target.value)} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
+                  <input type="text" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono" /></div>
+                <div>
+                  <label className="block text-xs text-text-muted mb-1">Model</label>
+                  <select value={model} onChange={e => setModel(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
+                    <option value="deepseek-chat">DeepSeek V3 (deepseek-chat)</option>
+                    <option value="deepseek-reasoner">DeepSeek R1 (deepseek-reasoner)</option>
+                    <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                    <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs text-text-muted mb-1">Temperature ({temperature})</label>
-                    <input type="range" min="0" max="2" step="0.1" value={temperature} onChange={e => setTemperature(Number(e.target.value))} className="w-full accent-accent" /></div>
+                  <div><label className="block text-xs text-text-muted mb-1">Temperature ({temperature.toFixed(1)})</label>
+                    <input type="range" min="0" max="2" step="0.1" value={temperature} onChange={e => setTemperature(Number(e.target.value))} className="w-full accent-accent" />
+                    <div className="flex justify-between text-[9px] text-text-muted mt-0.5"><span>Precise</span><span>Creative</span></div>
+                  </div>
                   <div><label className="block text-xs text-text-muted mb-1">Max Tokens</label>
-                    <input type="number" value={maxTokens} onChange={e => setMaxTokens(Number(e.target.value))} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
+                    <input type="number" value={maxTokens} onChange={e => setMaxTokens(Number(e.target.value))} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                  </div>
                 </div>
                 <button onClick={handleTestConnection} disabled={testResult === "testing" || !apiKey}
-                  className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${testResult === "testing" ? "bg-surface-hover text-text-muted" : testResult === "success" ? "bg-green-600/20 text-green-400" : testResult === "fail" ? "bg-red-600/20 text-red-400" : "bg-surface-hover text-text-primary hover:bg-border"}`}>
-                  {testResult === "testing" ? "Testing..." : testResult === "success" ? <><CheckCircle size={16} /> Connected</> : testResult === "fail" ? <><XCircle size={16} /> Failed</> : <><Wifi size={16} /> Test Connection</>}
+                  className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-all ${testResult === "testing" ? "bg-surface-hover text-text-muted" : testResult === "success" ? "bg-green-600/20 text-green-400 border border-green-600/30" : testResult === "fail" ? "bg-red-600/20 text-red-400 border border-red-600/30" : "bg-surface-hover text-text-primary hover:bg-border border border-border"}`}>
+                  {testResult === "testing" ? <Loader2 size={16} className="animate-spin" /> : testResult === "success" ? <><CheckCircle size={16} /> Connected — API key valid</> : testResult === "fail" ? <><XCircle size={16} /> Connection failed — check key and URL</> : <><Wifi size={16} /> Test Connection</>}
                 </button>
+              </div>
+
+              {/* Agent Behavior */}
+              <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider">Agent Behavior</h3>
+                <div>
+                  <label className="block text-xs text-text-muted mb-2">Personality</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: "friendly", label: "Friendly", desc: "Encouraging, chatty" },
+                      { id: "balanced", label: "Balanced", desc: "Helpful, concise" },
+                      { id: "technical", label: "Technical", desc: "Direct, code-first" },
+                    ].map(p => (
+                      <button key={p.id} onClick={() => localStorage.setItem("ai_personality", p.id)}
+                        className={`px-3 py-2 rounded-lg text-xs border transition-colors text-left ${(localStorage.getItem("ai_personality") || "balanced") === p.id ? "border-accent bg-accent/10 text-accent" : "border-border text-text-muted hover:text-text-primary hover:border-text-muted"}`}>
+                        <div className="font-medium">{p.label}</div>
+                        <div className="text-[10px] opacity-70">{p.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-muted mb-2">Agent Mode</label>
+                  <div className="space-y-2">
+                    {[
+                      { id: "plan", label: "Plan before coding", desc: "AI outlines a plan before writing code", default: true },
+                      { id: "suggestions", label: "Show suggestion chips", desc: "Display quick-action buttons in chat", default: true },
+                      { id: "autoScroll", label: "Auto-scroll to latest", desc: "Automatically scroll to new messages", default: true },
+                    ].map(opt => {
+                      const key = `ai_option_${opt.id}`;
+                      const stored = localStorage.getItem(key);
+                      const checked = stored === null ? opt.default : stored === "true";
+                      return (
+                        <label key={opt.id} className="flex items-start gap-3 cursor-pointer py-1">
+                          <input type="checkbox" checked={checked} onChange={e => localStorage.setItem(key, String(e.target.checked))} className="mt-0.5 accent-accent w-4 h-4" />
+                          <div>
+                            <div className="text-sm text-text-primary">{opt.label}</div>
+                            <div className="text-[10px] text-text-muted">{opt.desc}</div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Usage */}
+              <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider">Usage & Limits</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-surface-alt rounded-lg p-3 border border-border">
+                    <div className="text-text-muted text-xs mb-0.5">Requests today</div>
+                    <div className="text-text-primary font-mono">—</div>
+                  </div>
+                  <div className="bg-surface-alt rounded-lg p-3 border border-border">
+                    <div className="text-text-muted text-xs mb-0.5">Tokens used</div>
+                    <div className="text-text-primary font-mono">—</div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-text-muted">Usage tracking requires server-side implementation.</p>
               </div>
             </>)}
 
@@ -139,9 +212,9 @@ export default function SettingsView() {
               <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs text-text-muted mb-1">Font Size</label>
-                    <input type="number" min={10} max={32} value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
+                    <input type="number" min={10} max={32} value={fontSize} onChange={e => setFontSize(Number(e.target.value))} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
                   <div><label className="block text-xs text-text-muted mb-1">Tab Size</label>
-                    <input type="number" min={1} max={8} value={tabSize} onChange={e => setTabSize(Number(e.target.value))} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
+                    <input type="number" min={1} max={8} value={tabSize} onChange={e => setTabSize(Number(e.target.value))} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" /></div>
                 </div>
                 <div className="space-y-3">
                   {[
@@ -164,8 +237,8 @@ export default function SettingsView() {
               <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Hardware</h2>
               <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
                 <div><label className="block text-xs text-text-muted mb-1">Arduino CLI Path</label>
-                  <input type="text" value={arduinoPath} onChange={e => setArduinoPath(e.target.value)} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-accent" /></div>
-                <p className="text-xs text-text-muted">Install: <code className="px-1 py-0.5 rounded bg-surface-dark text-accent text-xs">brew install arduino-cli</code></p>
+                  <input type="text" value={arduinoPath} onChange={e => setArduinoPath(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-accent" /></div>
+                <p className="text-xs text-text-muted">Download from <a href="https://arduino.github.io/arduino-cli/installation/" target="_blank" rel="noreferrer" className="text-accent hover:underline">arduino.github.io/arduino-cli</a></p>
               </div>
             </>)}
 
@@ -189,7 +262,7 @@ export default function SettingsView() {
               <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Workspace</h2>
               <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
                 <div><label className="block text-xs text-text-muted mb-1">Workspace Root</label>
-                  <input type="text" value={workspaceRoot} onChange={e => setWorkspaceRoot(e.target.value)} className="w-full bg-surface-dark border border-border rounded px-3 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-accent" /></div>
+                  <input type="text" value={workspaceRoot} onChange={e => setWorkspaceRoot(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-accent" /></div>
                 <p className="text-xs text-text-muted">Projects are stored in subdirectories under this folder.</p>
               </div>
             </>)}

@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useArduinoStore } from "@/stores/arduinoStore";
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
 import {
   Search, Play, Upload, RefreshCw, Usb, X, RotateCcw,
   AlertTriangle, Terminal, Package, Trash2, Cpu, ExternalLink, Info, Clock
@@ -52,9 +57,13 @@ export default function HardwarePanel() {
   const [searchResults, setSearchResults] = useState<LibraryInfo[]>([]);
   const [installing, setInstalling] = useState<string | null>(null);
 
+  // Sync selection to shared store so AI agent can access it
+  const arduinoStore = useArduinoStore();
+  useEffect(() => { arduinoStore.setSelected(selectedBoard, selectedPort); }, [selectedBoard, selectedPort]);
+
   // Auto-detect on mount
   useEffect(() => {
-    invoke<string>("detect_arduino")
+    safeInvoke<string>("detect_arduino")
       .then(() => setCliReady(true))
       .catch(() => setCliReady(false));
   }, []);
@@ -63,8 +72,8 @@ export default function HardwarePanel() {
     setCompileResult(null); setUploadResult(null);
     try {
       const [b, p] = await Promise.all([
-        invoke<string[]>("list_boards").catch(() => FALLBACK_BOARDS),
-        invoke<string[]>("list_ports").catch(() => [] as string[]),
+        safeInvoke<string[]>("list_boards").catch(() => FALLBACK_BOARDS),
+        safeInvoke<string[]>("list_ports").catch(() => [] as string[]),
       ]);
       setBoards(b.length > 0 ? b : FALLBACK_BOARDS);
       setPorts(p);
@@ -73,7 +82,7 @@ export default function HardwarePanel() {
 
   const refreshLibraries = useCallback(async () => {
     try {
-      const libs = await invoke<LibraryInfo[]>("list_libraries");
+      const libs = await safeInvoke<LibraryInfo[]>("list_libraries");
       setInstalledLibs(libs);
     } catch { /* cli may not be installed */ }
   }, []);
@@ -85,7 +94,7 @@ export default function HardwarePanel() {
   const handleCompile = async () => {
     setCompiling(true); setCompileResult(null); setUploadResult(null);
     try {
-      const result = await invoke<CompileResult>("compile_sketch", { board: selectedBoard });
+      const result = await safeInvoke<CompileResult>("compile_sketch", { board: selectedBoard });
       setCompileResult(result);
     } catch (e: any) {
       setCompileResult({ success: false, output: "", error: typeof e === "string" ? e : (e?.message || String(e)), duration_ms: 0 });
@@ -96,7 +105,7 @@ export default function HardwarePanel() {
   const handleUpload = async () => {
     setUploading(true); setCompileResult(null); setUploadResult(null);
     try {
-      const result = await invoke<UploadResult>("upload_sketch", { board: selectedBoard, port: selectedPort });
+      const result = await safeInvoke<UploadResult>("upload_sketch", { board: selectedBoard, port: selectedPort });
       setUploadResult(result);
     } catch (e: any) {
       setUploadResult({ success: false, output: "", error: typeof e === "string" ? e : (e?.message || String(e)), duration_ms: 0 });
@@ -107,19 +116,19 @@ export default function HardwarePanel() {
   const searchLibraries = async () => {
     if (!librarySearch.trim()) return;
     try {
-      const results = await invoke<LibraryInfo[]>("search_libraries", { query: librarySearch });
+      const results = await safeInvoke<LibraryInfo[]>("search_libraries", { query: librarySearch });
       setSearchResults(results);
     } catch { /* ignore */ }
   };
 
   const installLibrary = async (name: string) => {
     setInstalling(name);
-    try { await invoke("install_library", { name }); await refreshLibraries(); } catch { /* */ }
+    try { await safeInvoke("install_library", { name }); await refreshLibraries(); } catch { /* */ }
     setInstalling(null);
   };
 
   const removeLibrary = async (name: string) => {
-    try { await invoke("remove_library", { name }); await refreshLibraries(); } catch { /* */ }
+    try { await safeInvoke("remove_library", { name }); await refreshLibraries(); } catch { /* */ }
   };
 
   const filteredBoards = boards.filter(b =>
@@ -154,8 +163,9 @@ export default function HardwarePanel() {
             <AlertTriangle size={13} className="shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Arduino CLI not found</p>
-              <p className="text-yellow-500/80 mt-0.5">Install to enable hardware:</p>
-              <code className="block mt-1 px-1.5 py-0.5 rounded bg-surface text-[10px] text-text-primary font-mono">brew install arduino-cli</code>
+              <p className="text-yellow-500/80 mt-0.5">Install from:</p>
+              <a href="https://arduino.github.io/arduino-cli/installation/" target="_blank" rel="noreferrer"
+                className="block mt-1 text-accent hover:underline">arduino.github.io/arduino-cli/installation</a>
             </div>
           </div>
         )}

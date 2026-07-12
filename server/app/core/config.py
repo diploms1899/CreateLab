@@ -1,11 +1,16 @@
 """Application configuration via environment variables."""
 
-from pydantic_settings import BaseSettings
+import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
+# Resolve .env path relative to this config file (server/app/core/ -> server/)
+_ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
 
 
 class Settings(BaseSettings):
     """Server configuration loaded from environment or .env file."""
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8")
 
     app_name: str = "CoreV2 CreateLab Server"
     debug: bool = False
@@ -22,11 +27,11 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 8443
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = ["http://localhost:1420", "http://localhost:5173", "tauri://localhost", "https://tauri.localhost"]
 
     # DeepSeek
     deepseek_api_key: Optional[str] = None
-    deepseek_model: str = "deepseek-coder"
+    deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_max_tokens: int = 8192
     deepseek_temperature: float = 0.3
@@ -41,10 +46,6 @@ class Settings(BaseSettings):
         ".ino", ".cpp", ".h", ".hpp", ".c", ".json",
         ".md", ".txt", ".toml", ".yaml", ".yml",
     ]
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()

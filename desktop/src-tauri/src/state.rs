@@ -18,7 +18,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         Self {
-            server_url: Mutex::new(String::from("http://localhost:8443")),
+            server_url: Mutex::new(String::from("http://localhost:8000")),
             access_token: Mutex::new(None),
             refresh_token: Mutex::new(None),
             user_id: Mutex::new(None),

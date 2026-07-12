@@ -97,8 +97,11 @@ fn ensure_sketch(project_path: &PathBuf) -> Result<PathBuf, String> {
 pub async fn detect_arduino(state: State<'_, AppState>) -> Result<String, String> {
     let paths = [
         "arduino-cli",
+        "arduino-cli.exe",
         "/usr/local/bin/arduino-cli",
         "/opt/homebrew/bin/arduino-cli",
+        r"C:\Program Files\Arduino CLI\arduino-cli.exe",
+        r"C:\Program Files (x86)\Arduino CLI\arduino-cli.exe",
     ];
     for path in &paths {
         if let Ok(output) = Command::new(path).arg("version").output() {
@@ -108,7 +111,7 @@ pub async fn detect_arduino(state: State<'_, AppState>) -> Result<String, String
             }
         }
     }
-    Err("Arduino CLI not found. Install with: brew install arduino-cli".into())
+    Err("Arduino CLI not found. Install from https://arduino.github.io/arduino-cli/installation/".into())
 }
 
 // ── Boards ────────────────────────────────────
