@@ -29,6 +29,37 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' http://localhost:* https://api.deepseek.com"
     }
   },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Education",
+    "shortDescription": "CoreV2 Summer Camp — Educational Development Platform",
+    "longDescription": "CreateLab is an educational development platform for the CoreV2 Summer Camp. Build, code, and deploy Arduino projects with AI mentorship — no complex toolchain setup required.",
+    "copyright": "Copyright © 2026 CoreV2",
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  },
   "plugins": {
     "shell": {
       "open": true

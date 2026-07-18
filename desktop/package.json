@@ -9,6 +9,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "tauri:build": "tsc && vite build && tauri build",
+    "tauri:build:windows": "tsc && vite build && tauri build --bundles msi,nsis",
+    "tauri:build:macos": "tsc && vite build && tauri build --bundles dmg",
+    "build:installers": "tsc && vite build && tauri build --bundles deb,appimage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

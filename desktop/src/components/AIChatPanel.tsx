@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Project } from "@/stores/projectStore";
 import { useArduinoStore, CompileResult, UploadResult } from "@/stores/arduinoStore";
+import { useAIActivityStore } from "@/stores/aiActivityStore";
+import { useEditorStore } from "@/stores/editorStore";
 import {
-  Send, Bot, User, Loader2, FileCode, Check, X,
+  Send, Bot, User, Loader2, FileCode, Check,
   Trash2, Copy, CheckCheck, Sparkles, Lightbulb, Bug, Code2,
-  Terminal, Play, Upload, Cpu, AlertTriangle
+  Terminal, Play, Upload, Cpu, AlertTriangle, Brain, ChevronDown, ChevronRight
 } from "lucide-react";
 
 interface Message {
@@ -14,6 +16,8 @@ interface Message {
   timestamp: Date;
   patches?: CodePatch[];
   toolCall?: { tool: string; result?: CompileResult | UploadResult | string };
+  /** Chain-of-thought reasoning from the AI (shown as thinking steps) */
+  reasoning?: string;
 }
 
 interface CodePatch {
@@ -48,16 +52,101 @@ const SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
 
 function parseCodePatches(content: string): CodePatch[] {
   const patches: CodePatch[] = [];
-  const regex = /###\s*FILE:\s*(\S+)\s*\n```\w*\n([\s\S]*?)```/g;
+
+  // Full file replacements: ### FILE: path\n```cpp\n...\n```
+  const fileRegex = /###\s*FILE:\s*(\S+)\s*\n```\w*\n([\s\S]*?)```/g;
   let match;
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = fileRegex.exec(content)) !== null) {
     patches.push({ filePath: match[1], newContent: match[2].trimEnd() + "\n" });
   }
+
   return patches;
 }
 
-function stripFileMarkers(content: string): string {
-  return content.replace(/###\s*FILE:\s*\S+\s*\n```\w*\n[\s\S]*?```/g, "").trim();
+/** Parse unified diff blocks and return patches with the merged content */
+function parseDiffPatches(content: string, existingFiles: Record<string, string>): CodePatch[] {
+  const patches: CodePatch[] = [];
+  const diffRegex = /###\s*DIFF:\s*(\S+)\s*\n```diff\n([\s\S]*?)```/g;
+  let match;
+
+  while ((match = diffRegex.exec(content)) !== null) {
+    const filePath = match[1];
+    const diffContent = match[2];
+    const existing = existingFiles[filePath] || "";
+    const merged = applyUnifiedDiff(existing, diffContent);
+    if (merged !== null) {
+      patches.push({ filePath, newContent: merged });
+    }
+  }
+
+  return patches;
+}
+
+/** Apply a simple unified diff patch to existing content. Returns null if patch is invalid. */
+function applyUnifiedDiff(original: string, diff: string): string | null {
+  const originalLines = original.split("\n");
+  const result: string[] = [];
+  let origIdx = 0;
+
+  // Parse hunk headers: @@ -start,count +start,count @@
+  const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+  const diffLines = diff.split("\n");
+  let inHunk = false;
+  let hunkOrigStart = 0, hunkOrigCount = 0;
+
+  for (let i = 0; i < diffLines.length; i++) {
+    const line = diffLines[i];
+
+    if (line.startsWith("@@")) {
+      const hunkMatch = line.match(hunkRegex);
+      if (hunkMatch) {
+        // Flush lines before hunk start
+        while (origIdx < parseInt(hunkMatch[1]) - 1) {
+          if (origIdx < originalLines.length) result.push(originalLines[origIdx]);
+          origIdx++;
+        }
+        inHunk = true;
+        hunkOrigStart = parseInt(hunkMatch[1]) - 1;
+        hunkOrigCount = hunkMatch[2] ? parseInt(hunkMatch[2]) : 1;
+      }
+      continue;
+    }
+
+    if (inHunk) {
+      if (line.startsWith("+")) {
+        result.push(line.substring(1));
+      } else if (line.startsWith("-")) {
+        origIdx++; // Skip removed line
+      } else if (line.startsWith(" ") || line === "") {
+        const content = line.startsWith(" ") ? line.substring(1) : line;
+        if (origIdx < originalLines.length && originalLines[origIdx] !== content) {
+          // Line mismatch — fall back to full replacement indication
+          return null;
+        }
+        result.push(content);
+        origIdx++;
+      } else {
+        // End of hunk
+        inHunk = false;
+      }
+    }
+  }
+
+  // Append remaining original lines
+  while (origIdx < originalLines.length) {
+    result.push(originalLines[origIdx]);
+    origIdx++;
+  }
+
+  return result.join("\n");
+}
+
+/** Strip patch markers from display content so users don't see raw FILE/DIFF blocks. */
+function stripPatchMarkers(content: string): string {
+  return content
+    .replace(/###\s*FILE:\s*\S+\s*\n```\w*\n[\s\S]*?```/g, "")
+    .replace(/###\s*DIFF:\s*\S+\s*\n```diff\n[\s\S]*?```/g, "")
+    .trim();
 }
 
 function parseToolCalls(content: string): { cleanContent: string; tools: string[] } {
@@ -67,6 +156,43 @@ function parseToolCalls(content: string): { cleanContent: string; tools: string[
     return "";
   }).trim();
   return { cleanContent, tools };
+}
+
+/** Collapsible reasoning/thinking steps shown before the AI response.
+ *  Defined outside AIChatPanel to preserve collapse/expand state across renders. */
+function ReasoningSteps({ reasoning, hasContent }: { reasoning: string; hasContent: boolean }) {
+  const [expanded, setExpanded] = useState(!hasContent);
+  const steps = reasoning
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.trim().length > 0);
+
+  if (steps.length === 0) return null;
+
+  return (
+    <div className="mb-1.5 w-full">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="reasoning-toggle"
+      >
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Brain size={12} className="text-accent/70" />
+        <span>{hasContent ? "Thinking — done" : "Thinking..."}</span>
+      </button>
+      {expanded && (
+        <div className="reasoning-steps">
+          {steps.map((step, i) => (
+            <div
+              key={i}
+              className="reasoning-step fade-in"
+              style={{ animationDelay: `${Math.min(i * 30, 500)}ms` }}
+            >
+              {step.trim()}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AIChatPanel({ project, workspaceId, files, onApplyPatch }: AIChatPanelProps) {
@@ -85,7 +211,16 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
   const [toolRunning, setToolRunning] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const arduino = useArduinoStore();
+  const aiActivity = useAIActivityStore();
+  const editorStore = useEditorStore();
+
+  // File size limit: warn when total content > 50KB
+  const MAX_CONTEXT_SIZE = 50 * 1024; // 50KB
+  const totalFileSize = Object.values(files).reduce((sum, c) => sum + new Blob([c]).size, 0);
+  const isContextLarge = totalFileSize > MAX_CONTEXT_SIZE;
 
   const suggestions = SUGGESTIONS_BY_SLUG[project.slug] || [
     "What can you help me with?",
@@ -98,65 +233,256 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Cleanup on unmount: abort in-flight requests, prevent state updates
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const sendToAI = useCallback(async (userMsg: string) => {
+    // Guard: don't send if no workspace is active
+    if (!workspaceId) {
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        role: "system",
+        content: "⚠️ No workspace created yet. Create a project first from the Projects page.",
+        timestamp: new Date(),
+      }]);
+      return;
+    }
+
     setLoading(true);
+    aiActivity.setIsActive(true);
+    aiActivity.setPhase("Thinking");
+    aiActivity.addActivity("Analyzing request...", "thinking");
+
+    // Streaming state for the in-progress assistant message
+    const msgId = crypto.randomUUID();
+    let streamedReasoning = "";
+    let streamedContent = "";
+
+    // Add a placeholder assistant message that we'll update as chunks arrive
+    const placeholder: Message = {
+      id: msgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, placeholder]);
+
     try {
-      const { getApi } = await import("@/utils/api");
-      const api = getApi();
-      // Include latest build output for context
+      const { useAuthStore } = await import("@/stores/authStore");
+      const authStore = useAuthStore.getState();
+      const token = authStore.accessToken;
+      const serverUrl = authStore.serverUrl.replace(/\/$/, "");
+
+      // Include latest build output + serial output for context
       const buildCtx = arduino.compileResult
         ? (arduino.compileResult.success ? "BUILD SUCCESS:\n" : "BUILD FAILED:\n") +
           (arduino.compileResult.error || arduino.compileResult.output || "")
         : "";
+      const serialCtx = arduino.serialOutput.length > 0
+        ? "SERIAL OUTPUT:\n" + arduino.serialOutput.join("\n")
+        : "";
 
-      const response = await api.post(`/ai/chat/${workspaceId}`, {
-        message: userMsg,
-        include_files: Object.keys(files),
-        files: files,
-        build_output: buildCtx,
+      // Abort any in-flight request and create new controller
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const response = await fetch(`${serverUrl}/api/v1/ai/chat/${workspaceId}/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          message: userMsg,
+          include_files: Object.keys(files),
+          files: files,
+          build_output: [buildCtx, serialCtx].filter(Boolean).join("\n") || undefined,
+          active_file: editorStore.activeFile || undefined,
+          cursor_line: editorStore.activeFile ? 1 : undefined,
+        }),
+        signal: controller.signal,
       });
 
-      const rawContent: string = response.data.content || String(response.data);
-      const { cleanContent, tools } = parseToolCalls(rawContent);
-      const patches = parseCodePatches(cleanContent);
-      const displayContent = stripFileMarkers(cleanContent);
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
 
-      // Auto-apply all code patches directly to the editor
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+
+            if (event.type === "reasoning") {
+              if (!mountedRef.current) break;
+              aiActivity.setPhase("Thinking");
+              aiActivity.addActivity("Reasoning through problem...", "thinking");
+              streamedReasoning += event.content;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msgId ? { ...m, reasoning: streamedReasoning, content: streamedContent } : m
+                )
+              );
+            } else if (event.type === "content") {
+              // Actual response content arriving
+              if (streamedContent === "" && streamedReasoning) {
+                aiActivity.setPhase("Writing");
+                aiActivity.addActivity("Writing response...", "writing");
+              }
+              streamedContent += event.content;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msgId
+                    ? { ...m, reasoning: streamedReasoning || undefined, content: streamedContent }
+                    : m
+                )
+              );
+            } else if (event.type === "done") {
+              // Stream complete
+              aiActivity.setPhase("Idle");
+            } else if (event.type === "error") {
+              // AI service error — map error codes to user-friendly messages
+              const errorMessages: Record<string, string> = {
+                ai_auth_error: "🔑 AI API key issue — please check server configuration.",
+                ai_rate_limited: "⏳ AI is rate limited — please wait a moment and try again.",
+                ai_overloaded: "🏗️ AI servers are overloaded — retrying shortly...",
+                ai_network_error: "🌐 Cannot reach AI servers — check your internet connection.",
+                ai_server_error: "🖥️ AI server error — the service may be temporarily down.",
+                ai_error: "⚠️ AI service error — please try again.",
+              };
+              const errMsg = errorMessages[event.code] || event.message || "Unknown AI error";
+              streamedContent = errMsg;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msgId ? { ...m, content: errMsg, reasoning: streamedReasoning || undefined } : m
+                )
+              );
+            }
+          } catch {
+            // Skip malformed JSON lines
+          }
+        }
+      }
+
+      // Finalize message with parsed patches and tool calls
+      const finalContent = streamedContent || "(No response received)";
+      const { cleanContent, tools } = parseToolCalls(finalContent);
+      const filePatches = parseCodePatches(cleanContent);
+      const diffPatches = parseDiffPatches(cleanContent, files);
+      const allPatches = [...filePatches, ...diffPatches];
+      const displayContent = stripPatchMarkers(cleanContent);
+
+      // Auto-apply all patches
       const appliedFiles: string[] = [];
-      if (patches.length > 0) {
-        for (const patch of patches) {
+      if (allPatches.length > 0) {
+        aiActivity.setPhase("Applying changes");
+        for (const patch of allPatches) {
           onApplyPatch(patch.filePath, patch.newContent);
           appliedFiles.push(patch.filePath);
+          aiActivity.addActivity(`Applied ${patch.filePath}`, "writing", patch.filePath);
+        }
+        if (diffPatches.length > 0) {
+          aiActivity.addNotification({
+            summary: `Applied ${filePatches.length} file(s) + ${diffPatches.length} diff(s)`,
+          });
+        } else {
+          aiActivity.addNotification({
+            summary: `Applied ${allPatches.length} file change(s)`,
+            file: appliedFiles.join(", "),
+          });
         }
       }
 
-      const aiMessage: Message = {
-        id: crypto.randomUUID(),
+      const finalMessage: Message = {
+        id: msgId,
         role: "assistant",
-        content: displayContent || rawContent,
+        content: displayContent || finalContent,
+        reasoning: streamedReasoning || undefined,
+        patches: allPatches.length > 0 ? allPatches : undefined,
+        toolCall: appliedFiles.length > 0
+          ? { tool: "PATCH", result: `Applied ${appliedFiles.length} file(s): ${appliedFiles.join(", ")}` }
+          : undefined,
         timestamp: new Date(),
-        patches: patches.length > 0 ? patches : undefined,
-        toolCall: appliedFiles.length > 0 ? { tool: "PATCH", result: `Applied ${appliedFiles.length} file(s): ${appliedFiles.join(", ")}` } : undefined,
       };
-      setMessages((prev) => [...prev, aiMessage]);
 
-      // Execute any tool calls the AI requested
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? finalMessage : m))
+      );
+
+      // ── AGENTIC LOOP ── Execute tool calls and feed results back to AI
       if (tools.length > 0) {
-        for (const tool of tools) {
-          await executeTool(tool);
+        for (let i = 0; i < tools.length; i++) {
+          const tool = tools[i];
+          const result = await executeTool(tool);
+
+          // If compile succeeded or failed, feed result back to AI for autonomous iteration
+          if ((tool === "COMPILE" || tool === "UPLOAD") && i < tools.length - 0) {
+            const isLast = i === tools.length - 1;
+            // Feed build/upload result back to AI for next steps
+            if (!isLast) continue; // Only trigger loop on last tool
+
+            const resultObj = result as CompileResult | UploadResult | undefined;
+            if (resultObj && "success" in resultObj) {
+              const followCtx = resultObj.success
+                ? `BUILD SUCCESS:\n${resultObj.output || "Compilation successful."}\n\nWhat should I do next?`
+                : `BUILD FAILED:\n${resultObj.error || "Unknown error"}\n\nPlease analyze these errors and fix the code.`;
+
+              // Auto-follow-up to AI to continue the agentic loop
+              setTimeout(() => sendToAI(followCtx), 800);
+            }
+          }
         }
       }
-    } catch {
-      setMessages((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        role: "system",
-        content: "⚠️ Could not reach the AI server. Make sure the CreateLab server is running.",
-        timestamp: new Date(),
-      }]);
+    } catch (err: any) {
+      // Error type distinction: network vs auth vs rate limit vs server error
+      let errorContent: string;
+      if (err?.message?.includes("401") || err?.message?.includes("403")) {
+        errorContent = "🔒 Session expired. Please log in again to continue.";
+      } else if (err?.message?.includes("429")) {
+        errorContent = "⏳ Too many requests. Please wait a moment and try again.";
+      } else if (err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("503")) {
+        errorContent = "🖥️ Server is temporarily unavailable. Please try again in a moment.";
+      } else if (err instanceof TypeError && err.message === "Failed to fetch") {
+        errorContent = "🌐 Cannot connect to the server. Make sure the CreateLab server is running.";
+      } else {
+        errorContent = `⚠️ Could not reach the AI server. Make sure the CreateLab server is running.\n\n${err?.message || ""}`;
+      }
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? { ...m, content: errorContent, reasoning: undefined }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
+      aiActivity.setIsActive(false);
+      aiActivity.setPhase("Idle");
     }
-  }, [workspaceId, files, arduino.compileResult]);
+  }, [workspaceId, files, arduino.compileResult, onApplyPatch, aiActivity]);
 
   const executeTool = useCallback(async (tool: string) => {
     setToolRunning(tool);
@@ -286,8 +612,8 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
 
   return (
     <div className="h-full w-full border-l border-border bg-surface-alt flex flex-col">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+      {/* Header — shrink-0 keeps it fixed */}
+      <div className="shrink-0 px-4 py-3 border-b border-border flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
             <Bot size={16} className="text-accent" />
@@ -305,8 +631,8 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages — flex-1 min-h-0 allows scroll */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => {
           if (msg.role === "system") {
             const isCompile = msg.toolCall?.tool === "COMPILE";
@@ -349,29 +675,44 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
             >
               {msg.role === "assistant" ? <Bot size={16} /> : <User size={16} />}
             </div>
-            <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col`}>
-              <div
-                className={`rounded-xl px-4 py-2.5 text-sm ${
-                  msg.role === "assistant"
-                    ? "bg-surface border border-border text-text-primary"
-                    : "bg-accent/10 border border-accent/20 text-text-primary"
-                }`}
-              >
-                <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                {msg.patches && msg.patches.length > 0 && (
-                  <div className="mt-2 space-y-1 border-t border-border pt-2">
-                    {msg.patches.map((patch, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <FileCode size={12} className="text-accent" />
-                        <span className="text-text-muted flex-1 truncate">{patch.filePath}</span>
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-600/10 text-green-400 text-[10px]">
-                          <Check size={10} /> Applied
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col group`}>
+              {/* Reasoning / thinking steps — collapsible */}
+              {msg.role === "assistant" && msg.reasoning && (
+                <ReasoningSteps reasoning={msg.reasoning} hasContent={!!msg.content} />
+              )}
+              {msg.content ? (
+                <div
+                  className={`rounded-xl px-4 py-2.5 text-sm ${
+                    msg.role === "assistant"
+                      ? "bg-surface border border-border text-text-primary"
+                      : "bg-accent/10 border border-accent/20 text-text-primary"
+                  }`}
+                >
+                  <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  {msg.patches && msg.patches.length > 0 && (
+                    <div className="mt-2 space-y-1 border-t border-border pt-2">
+                      {msg.patches.map((patch, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <FileCode size={12} className="text-accent" />
+                          <span className="text-text-muted flex-1 truncate">{patch.filePath}</span>
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-600/10 text-green-400 text-[10px]">
+                            <Check size={10} /> Applied
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : loading ? (
+                <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-2">
+                  <span className="flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent loading-dot" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent loading-dot" style={{ animationDelay: "200ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent loading-dot" style={{ animationDelay: "400ms" }} />
+                  </span>
+                  <span className="text-xs text-text-muted">Generating...</span>
+                </div>
+              ) : null}
               {/* Copy button for assistant messages */}
               {msg.role === "assistant" && msg.content && (
                 <button
@@ -390,11 +731,16 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
         {loading && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center flex-shrink-0">
-              <Bot size={16} />
+              <Brain size={16} className="animate-pulse" />
             </div>
-            <div className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-2">
+            <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-2">
               <Loader2 size={14} className="animate-spin text-accent" />
-              <span className="text-xs text-text-muted">Thinking...</span>
+              <span className="text-xs text-text-muted">
+                {aiActivity.phase === "Thinking" && "Thinking through your request..."}
+                {aiActivity.phase === "Writing" && "Writing response..."}
+                {aiActivity.phase === "Applying changes" && "Applying code changes..."}
+                {(!aiActivity.phase || aiActivity.phase === "Idle") && "Processing..."}
+              </span>
             </div>
           </div>
         )}
@@ -402,8 +748,8 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
-      <div className="border-t border-border bg-surface-alt">
+      {/* Input area — shrink-0 keeps it pinned to bottom */}
+      <div className="shrink-0 border-t border-border bg-surface-alt">
         {/* Suggestion chips */}
         {messages.length <= 1 && (
           <div className="px-4 pt-3 flex flex-wrap gap-1.5">
@@ -415,6 +761,16 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
                 onClick={() => handleSend(s)}
               />
             ))}
+          </div>
+        )}
+
+        {/* File size warning */}
+        {isContextLarge && (
+          <div className="px-4 pt-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-600/10 border border-yellow-600/20 text-[11px] text-yellow-500">
+              <AlertTriangle size={12} />
+              <span>Large context ({(totalFileSize / 1024).toFixed(0)}KB). Consider focusing on fewer files for faster responses.</span>
+            </div>
           </div>
         )}
 
@@ -436,7 +792,7 @@ export default function AIChatPanel({ project, workspaceId, files, onApplyPatch 
           <button
             onClick={() => handleSend()}
             disabled={!input.trim() || loading}
-            className="bg-accent hover:bg-accent-hover text-white rounded-xl px-3 py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+            className="bg-accent hover:bg-accent-hover text-white rounded-xl p-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center aspect-square"
           >
             <Send size={16} />
           </button>
