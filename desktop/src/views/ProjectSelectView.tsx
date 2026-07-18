@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { projectsApi } from "@/utils/api";
+import { CardSkeleton } from "@/components/common/Skeleton";
 import {
   Gamepad2,
   Fish,
@@ -12,6 +13,9 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
+  Trash2,
+  AlertTriangle,
+  FolderOpen,
 } from "lucide-react";
 
 interface Template {
@@ -43,10 +47,11 @@ export default function ProjectSelectView() {
   const [creating, setCreating] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const { user } = useAuthStore();
-  const { setCurrentProject, addProject } = useProjectStore();
+  const { setCurrentProject, addProject, removeProject, projects } = useProjectStore();
   const { applyProjectTheme } = useThemeStore();
 
   useEffect(() => {
@@ -146,6 +151,11 @@ export default function ProjectSelectView() {
     }
   };
 
+  const handleDeleteProject = (id: string) => {
+    removeProject(id);
+    setDeleteConfirm(null);
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto px-8 py-12">
@@ -162,7 +172,15 @@ export default function ProjectSelectView() {
 
         {/* Template cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-          {templates.map((template) => (
+          {loading ? (
+            <>
+              <CardSkeleton />
+              <CardSkeleton />
+              <CardSkeleton />
+              <CardSkeleton />
+            </>
+          ) : (
+            templates.map((template) => (
             <button
               key={template.slug}
               onClick={() => handleSelectProject(template)}
@@ -193,8 +211,74 @@ export default function ProjectSelectView() {
                 </p>
               </div>
             </button>
-          ))}
+          ))
+          )}
         </div>
+
+        {/* Existing projects */}
+        {projects.length > 0 && (
+          <div className="mb-10">
+            <h2 className="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
+              <FolderOpen size={16} />
+              Your Projects
+            </h2>
+            <div className="space-y-2">
+              {projects.map((proj) => (
+                <div
+                  key={proj.id}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-alt border border-border hover:border-accent/30 transition-colors group"
+                >
+                  <span className="flex-1 text-sm text-text-primary font-medium truncate">
+                    {proj.name}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setCurrentProject(proj);
+                      navigate("/workspace");
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                  >
+                    <ArrowRight size={12} /> Open
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(proj.id)}
+                    className="p-1.5 rounded text-text-muted hover:text-red-400 hover:bg-red-600/10 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Delete project"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Delete confirmation dialog */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDeleteConfirm(null)}>
+            <div className="bg-surface border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-600/10 flex items-center justify-center">
+                  <AlertTriangle size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-text-primary">Delete Project</h3>
+                  <p className="text-xs text-text-muted">This action cannot be undone.</p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-hover transition-colors">
+                  Cancel
+                </button>
+                <button onClick={() => handleDeleteProject(deleteConfirm)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Creation panel */}
         {selectedTemplate && (

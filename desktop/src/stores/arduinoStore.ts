@@ -37,6 +37,10 @@ interface ArduinoState {
   uploadResult: UploadResult | null;
   compiling: boolean;
   uploading: boolean;
+  /** Latest serial output lines (last 20 lines max) — auto-fed to AI context */
+  serialOutput: string[];
+  addSerialLine: (line: string) => void;
+  clearSerialOutput: () => void;
   detect: () => Promise<void>;
   listBoards: () => Promise<void>;
   listPorts: () => Promise<void>;
@@ -51,6 +55,8 @@ interface ArduinoState {
   searchLibraries: (query: string) => Promise<void>;
   installLibrary: (name: string) => Promise<void>;
   removeLibrary: (name: string) => Promise<void>;
+  /** Scan files for #include directives and auto-install missing libraries */
+  autoInstallLibraries: (fileContents: Record<string, string>) => Promise<string[]>;
 }
 
 export const useArduinoStore = create<ArduinoState>((set, get) => ({
@@ -64,6 +70,9 @@ export const useArduinoStore = create<ArduinoState>((set, get) => ({
   uploadResult: null,
   compiling: false,
   uploading: false,
+  serialOutput: [],
+  addSerialLine: (line) => set((s) => ({ serialOutput: [...s.serialOutput.slice(-19), line] })),
+  clearSerialOutput: () => set({ serialOutput: [] }),
   installedLibs: [],
   searchResults: [],
   installing: null,
@@ -151,5 +160,38 @@ export const useArduinoStore = create<ArduinoState>((set, get) => ({
       await safeInvoke("remove_library", { name });
       await get().listLibraries();
     } catch { /* ignore */ }
+  },
+
+  autoInstallLibraries: async (fileContents) => {
+    // Extract #include <...> or #include "..." directives from all files
+    const includes = new Set<string>();
+    for (const content of Object.values(fileContents)) {
+      const matches = content.matchAll(/#include\s*[<"]([^>"]+)[>"]/g);
+      for (const m of matches) {
+        const lib = m[1].split("/")[0].split(".")[0]; // e.g., "Arduino.h" → "Arduino"
+        if (lib && !["Arduino", "stdint", "stddef", "string", "cmath", "cstdint"].includes(lib)) {
+          includes.add(lib);
+        }
+      }
+    }
+
+    const installed: string[] = [];
+    // Try installing each detected library
+    for (const name of includes) {
+      try {
+        // Check if already installed
+        const libs = await safeInvoke<{name: string}[]>("list_libraries");
+        if (libs.some(l => l.name.toLowerCase() === name.toLowerCase())) continue;
+
+        set({ installing: name });
+        await safeInvoke("install_library", { name });
+        installed.push(name);
+      } catch { /* library may not exist in arduino-cli index */ }
+    }
+    set({ installing: null });
+    if (installed.length > 0) {
+      await get().listLibraries();
+    }
+    return installed;
   },
 }));

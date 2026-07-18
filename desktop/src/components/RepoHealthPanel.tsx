@@ -14,7 +14,7 @@ interface HealthReport { repo_size_human: string; source_count: number; ignored_
 
 async function scanRepo(): Promise<HealthReport> {
   try {
-    return await invoke<HealthReport>("scan_repo_health");
+    return await safeInvoke<HealthReport>("scan_repo_health");
   } catch {
     // fallback: client-side estimate
     return { repo_size_human: "?", source_count: 0, ignored_dirs: [], clean: false };
@@ -91,7 +91,7 @@ export default function RepoHealthPanel() {
           <div>
             <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider mb-3">Build Artifacts</h2>
             <div className="bg-surface rounded-lg border border-border overflow-hidden">
-              {report?.ignored_dirs.length === 0 ? (
+              {!report || report.ignored_dirs.length === 0 ? (
                 <div className="p-6 text-center text-text-muted text-sm">No build artifacts found</div>
               ) : (
                 <table className="w-full text-sm">
@@ -136,16 +136,16 @@ export default function RepoHealthPanel() {
           <div>
             <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider mb-3">One-Click Cleanup</h2>
             <div className="grid grid-cols-3 gap-3">
-              {[
-                ["Cargo Clean", Terminal, "cargo clean", ["cargo", "clean"]],
-                ["npm Clean", Package, "npm clean", ["rm", "-rf", "desktop/node_modules"]],
-                ["Python Clean", Database, "pycache clean", ["find", ".", "-type", "d", "-name", "__pycache__", "-exec", "rm", "-rf", "{}", "+"]],
-              ].map(([label, Icon, _, cmd]) => (
-                <button key={label as string} onClick={() => runCmd(label as string, cmd as string[])}
+              {([
+                { label: "Cargo Clean", Icon: Terminal, cmd: ["cargo", "clean"] },
+                { label: "npm Clean", Icon: Package, cmd: ["rm", "-rf", "desktop/node_modules"] },
+                { label: "Python Clean", Icon: Database, cmd: ["find", ".", "-type", "d", "-name", "__pycache__", "-exec", "rm", "-rf", "{}", "+"] },
+              ] as const).map(({ label, Icon, cmd }) => (
+                <button key={label} onClick={() => runCmd(label, [...cmd])}
                   disabled={cleaning !== null}
                   className="flex items-center justify-center gap-2 p-3 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors disabled:opacity-40">
                   <Icon size={16} className="text-text-muted" />
-                  <span className="text-sm text-text-primary">{label as string}</span>
+                  <span className="text-sm text-text-primary">{label}</span>
                   {cleaning === label && <RefreshCw size={14} className="animate-spin text-accent" />}
                 </button>
               ))}

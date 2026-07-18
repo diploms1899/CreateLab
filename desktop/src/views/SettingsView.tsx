@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useThemeStore } from "@/stores/themeStore";
+import { toast } from "@/stores/toastStore";
 import {
   ArrowLeft, Save, Wifi, CheckCircle, XCircle, Loader2,
-  Cpu, Palette, Settings2, Code, FolderOpen, Monitor, HardDrive
+  Cpu, Palette, Code, FolderOpen, HardDrive
 } from "lucide-react";
 
 type SettingsTab = "ai" | "editor" | "hardware" | "theme" | "workspace";
@@ -20,15 +22,16 @@ const TABS: TabDef[] = [
 export default function SettingsView() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<SettingsTab>("ai");
+  const { theme: currentTheme } = useThemeStore();
 
   // AI
   const [apiKey, setApiKey] = useState(localStorage.getItem("deepseek_api_key") || "");
   const [baseUrl, setBaseUrl] = useState(localStorage.getItem("deepseek_base_url") || "https://api.deepseek.com");
-  const [model, setModel] = useState(localStorage.getItem("deepseek_model") || "deepseek-chat");
+  const [model, setModel] = useState(localStorage.getItem("deepseek_model") || "deepseek-v4-pro");
   const [temperature, setTemperature] = useState(Number(localStorage.getItem("deepseek_temperature") || "0.7"));
   const [maxTokens, setMaxTokens] = useState(Number(localStorage.getItem("deepseek_max_tokens") || "4096"));
   const [testResult, setTestResult] = useState<"idle" | "testing" | "success" | "fail">("idle");
-  const [saved, setSaved] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Editor
   const [fontSize, setFontSize] = useState(Number(localStorage.getItem("editor_fontSize") || "14"));
@@ -36,17 +39,50 @@ export default function SettingsView() {
   const [minimap, setMinimap] = useState(localStorage.getItem("editor_minimap") !== "false");
   const [lineNumbers, setLineNumbers] = useState(localStorage.getItem("editor_lineNumbers") !== "false");
   const [wordWrap, setWordWrap] = useState(localStorage.getItem("editor_wordWrap") !== "false");
-  const [formatOnSave, setFormatOnSave] = useState(localStorage.getItem("editor_formatOnSave") === "true");
 
   // Hardware
   const [arduinoPath, setArduinoPath] = useState(localStorage.getItem("arduino_cli_path") || "arduino-cli");
 
   // Theme
-  const themes = ["Dark", "Light", "OLED", "Synthwave", "Cyberpunk", "Ocean", "Forest", "Nord", "Dracula", "Monokai", "One Dark", "GitHub Dark", "Catppuccin", "Tokyo Night"];
-  const [activeTheme, setActiveTheme] = useState(localStorage.getItem("theme") || "Dark");
+  const themes = ["Dark", "Light", "OLED", "Synthwave", "Ocean", "Forest", "Nord", "Dracula", "Monokai", "One Dark", "GitHub Dark", "Catppuccin", "Tokyo Night"];
+  // Map theme name to store ID for correct selection highlighting
+  const themeNameToId: Record<string, string> = {
+    Dark: "dark", Light: "light", OLED: "oled", Synthwave: "synthwave", Ocean: "ocean",
+    Forest: "forest", Nord: "nord", Dracula: "dracula", Monokai: "monokai",
+    "One Dark": "one-dark", "GitHub Dark": "github-dark", Catppuccin: "catppuccin", "Tokyo Night": "tokyo-night",
+  };
+  const currentThemeId = currentTheme?.id || localStorage.getItem("theme") || "dark";
+  const [activeTheme, setActiveTheme] = useState<string>(
+    Object.entries(themeNameToId).find(([_, id]) => id === currentThemeId)?.[0] || "Dark"
+  );
 
   // Workspace
   const [workspaceRoot, setWorkspaceRoot] = useState(localStorage.getItem("workspace_root") || "~/Documents/CreateLab");
+
+  /** Validate settings before saving */
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (apiKey && !apiKey.startsWith("sk-")) {
+      errs.apiKey = "API key should start with 'sk-'";
+    }
+    if (baseUrl && !baseUrl.startsWith("https://")) {
+      errs.baseUrl = "Base URL must use HTTPS";
+    }
+    if (temperature < 0 || temperature > 2) {
+      errs.temperature = "Temperature must be 0–2";
+    }
+    if (maxTokens < 100 || maxTokens > 32768) {
+      errs.maxTokens = "Max tokens must be 100–32768";
+    }
+    if (fontSize < 8 || fontSize > 32) {
+      errs.fontSize = "Font size must be 8–32";
+    }
+    if (tabSize < 1 || tabSize > 8) {
+      errs.tabSize = "Tab size must be 1–8";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
 
   const handleTestConnection = async () => {
     setTestResult("testing");
@@ -57,6 +93,11 @@ export default function SettingsView() {
   };
 
   const handleSaveAll = () => {
+    if (!validate()) {
+      toast.error("Please fix validation errors before saving.");
+      return;
+    }
+
     localStorage.setItem("deepseek_api_key", apiKey);
     localStorage.setItem("deepseek_base_url", baseUrl);
     localStorage.setItem("deepseek_model", model);
@@ -67,12 +108,14 @@ export default function SettingsView() {
     localStorage.setItem("editor_minimap", String(minimap));
     localStorage.setItem("editor_lineNumbers", String(lineNumbers));
     localStorage.setItem("editor_wordWrap", String(wordWrap));
-    localStorage.setItem("editor_formatOnSave", String(formatOnSave));
     localStorage.setItem("arduino_cli_path", arduinoPath);
     localStorage.setItem("theme", activeTheme);
     localStorage.setItem("workspace_root", workspaceRoot);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+
+    // Apply theme immediately via the theme store
+    useThemeStore.getState().setThemeByName(activeTheme);
+
+    toast.success("Settings saved successfully.");
   };
 
   return (
@@ -90,8 +133,8 @@ export default function SettingsView() {
           <HardDrive size={14} /> Repo Health
         </button>
         <button onClick={handleSaveAll}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-all ${saved ? "bg-green-600 text-white" : "bg-accent text-white hover:opacity-90"}`}>
-          {saved ? <><CheckCircle size={16} /> Saved</> : <><Save size={16} /> Save All</>}
+          className="flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium bg-accent text-white hover:opacity-90 transition-all">
+          <Save size={16} /> Save All
         </button>
       </div>
 
@@ -118,9 +161,11 @@ export default function SettingsView() {
               <div className="space-y-4 bg-surface rounded-lg p-5 border border-border">
                 <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider">Connection</h3>
                 <div><label className="block text-xs text-text-muted mb-1">DeepSeek API Key</label>
-                  <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono" placeholder="sk-..." /></div>
+                  <input type="password" value={apiKey} onChange={e => { setApiKey(e.target.value); setErrors(prev => ({...prev, apiKey: ""})); }} className={`w-full bg-surface border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono ${errors.apiKey ? "border-red-500" : "border-border"}`} placeholder="sk-..." />
+                  {errors.apiKey && <p className="text-[10px] text-red-400 mt-1">{errors.apiKey}</p>}</div>
                 <div><label className="block text-xs text-text-muted mb-1">Base URL</label>
-                  <input type="text" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono" /></div>
+                  <input type="text" value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setErrors(prev => ({...prev, baseUrl: ""})); }} className={`w-full bg-surface border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent font-mono ${errors.baseUrl ? "border-red-500" : "border-border"}`} />
+                  {errors.baseUrl && <p className="text-[10px] text-red-400 mt-1">{errors.baseUrl}</p>}</div>
                 <div>
                   <label className="block text-xs text-text-muted mb-1">Model</label>
                   <select value={model} onChange={e => setModel(e.target.value)} className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
@@ -221,7 +266,6 @@ export default function SettingsView() {
                     [minimap, setMinimap, "Minimap"],
                     [lineNumbers, setLineNumbers, "Line Numbers"],
                     [wordWrap, setWordWrap, "Word Wrap"],
-                    [formatOnSave, setFormatOnSave, "Format on Save"],
                   ].map(([val, setter, label]) => (
                     <label key={label as string} className="flex items-center justify-between cursor-pointer">
                       <span className="text-sm text-text-primary">{label as string}</span>
